@@ -1,0 +1,11 @@
+node_modules/
+
+# 書き出した動画・静止画・一時プロジェクト
+out/
+
+# ビルド成果物
+web/dist/
+dist/
+
+.DS_Store
+*.log
