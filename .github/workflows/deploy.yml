@@ -5,21 +5,20 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# ビルド結果を gh-pages ブランチへ push するだけなので、必要なのは contents: write。
+# Pages のデプロイAPI(actions/deploy-pages)は使わない。
+# このリポジトリではデプロイが deployment_queued のまま10分で
+# 打ち切られる事象が頻発し、timeout を延ばしてもアクション側の
+# 上限で効かなかったため、ブランチ方式に切り替えている。
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
-# 同時に複数のデプロイが走らないようにする。
-# 進行中のデプロイは打ち切らないこと(cancel-in-progress: false)。
-# 打ち切るとそのコミットのPagesデプロイが中途半端な状態で残り、
-# 以降そのSHAに対するデプロイが「Deployment cancelled」で弾かれ続ける。
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,21 +34,16 @@ jobs:
       # base をリポジトリ名のサブパスにする
       - run: npm run build
 
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
-        with:
-          # このリポジトリではPages側のステータス反映が遅く、
-          # 既定の10分では配信が完了していても待ちきれずに失敗と記録される。
-          # 実際の配信は成功しているので、待ち時間だけ延ばす。
-          timeout: 1800000
+      - name: gh-pages へ公開
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd dist
+          # アンダースコア始まりのファイルがJekyllに無視されるのを防ぐ
+          touch .nojekyll
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Deploy ${GITHUB_SHA}"
+          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:gh-pages
