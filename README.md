@@ -4,25 +4,34 @@
 
 出発地・経由地・到着地を地図上に置くだけで、地点間を大円で結んだ経路が描かれていく動画ができます。
 
+## ブラウザで使う(インストール不要)
+
+**https://myne0915.github.io/map-route-anim/**
+
+開くだけで使えます。書き出しまでブラウザ内で完結するので、インストールもアカウント登録も要りません。作ったデータがどこかへ送られることもありません。
+
+> 書き出しには WebCodecs を使います。Chrome / Edge / Safari 16.4以降で動作します。
+
 ## 特徴
 
+- **インストール不要。** ブラウザだけで書き出しまで完結します
 - **地図データは数MB。** Natural Earth(パブリックドメイン)を使うので、地図タイルのダウンロードもAPIキーも不要
-- **外部API依存ゼロ。** ネットワークに一切アクセスしません
+- **外部API依存ゼロ。** ネットワークにデータを送りません
 - **プレビューと書き出しが同じコード。** 見えているものがそのまま書き出されます
-- **書き出しが速い。** 1080p・10秒(300フレーム)で約2.4秒
+- **書き出しが速い。** ハードウェア符号化を使います
 - 帰属表示の焼き込み不要(Natural Earthはパブリックドメイン)
 
-## 必要なもの
+## ローカルで動かす場合
+
+自分で改造したいときや、コマンドラインから一括で書き出したいときに使います。
 
 | | バージョン | 備考 |
 |---|---|---|
 | Node.js | 20.19以上 または 22.12以上 | Viteの要件 |
-| ffmpeg | 任意 | MP4エンコードに使用。`brew install ffmpeg` |
-
-## セットアップ
+| ffmpeg | コマンドライン書き出しのみ必要 | `brew install ffmpeg` |
 
 ```bash
-git clone <このリポジトリ>
+git clone https://github.com/MYne0915/map-route-anim.git
 cd map-route-anim
 npm install
 ```
@@ -35,7 +44,7 @@ npm install
 npm run dev
 ```
 
-ブラウザで http://localhost:5180 が開きます。
+ブラウザで http://localhost:5180 が開きます。公開版と同じものです。
 
 | 操作 | 動作 |
 |---|---|
@@ -49,6 +58,8 @@ npm run dev
 
 ### コマンドライン
 
+GUIの「保存」で書き出したJSONを使います。ffmpegが必要です。
+
 ```bash
 # 保存したプロジェクトから書き出す
 npm run render -- path/to/route.json -o out/my-route.mp4
@@ -61,16 +72,22 @@ npm run still
 
 ### レンダラは1つだけ
 
-プレビュー(ブラウザ)と書き出し(Node)が**同じ `drawFrame` を呼びます**。違うのは解像度だけです。
+プレビューも書き出しも**同じ `drawFrame` を呼びます**。違うのは解像度だけです。
 
 ```
-src/core/draw.js  ←  唯一のレンダラ
-   ↓                      ↓
-ブラウザのcanvas      Node (@napi-rs/canvas)
-プレビュー             → ffmpeg → MP4
+                src/core/draw.js  ←  唯一のレンダラ
+        ┌───────────────┼───────────────┐
+   プレビュー      ブラウザ書き出し      CLI書き出し
+  (canvas)      WebCodecs → MP4    Node → ffmpeg → MP4
 ```
 
-描画ロジックをどちらか一方に書くと、そこからプレビューと出力がズレ始めます。`src/core/` にはCanvas 2D以外のAPIを持ち込まない方針です。
+描画ロジックをどれか1つに書くと、そこから出力がズレ始めます。`src/core/` にはCanvas 2D以外のAPIを持ち込まない方針です。
+
+### 書き出しにffmpeg.wasmを使わない理由
+
+ブラウザ側は WebCodecs の `VideoEncoder` でH.264に符号化し、`mp4-muxer` でMP4に詰めています。
+
+ffmpeg.wasm はコアだけで64MBある上に、マルチスレッド版は `SharedArrayBuffer`(=COOP/COEPヘッダ)を要求します。**GitHub Pages はそのヘッダを設定できません。** WebCodecs ならハードウェア符号化が使え、追加の依存も muxer 数十KBで済みます。
 
 ### 地図はキャッシュする
 
@@ -92,6 +109,8 @@ src/core/     レンダラ本体(ブラウザ・Node共用、Canvas 2Dのみ)
   project.js  データモデルと入力の検証
 src/node/     Node専用(フォント登録)
 web/          GUI(Vite + 素のJavaScript)
+  main.js     UIと操作
+  export.js   ブラウザ内でのMP4書き出し
 scripts/      CLI(書き出し・静止画)
 ```
 

@@ -8,6 +8,7 @@ import {
   pointScreenPos,
 } from '../src/core/draw.js';
 import { createProject, sampleProject } from '../src/core/project.js';
+import { exportMp4, downloadBlob, canExportInBrowser } from './export.js';
 import { labelStyles } from '../src/core/style.js';
 import { projections } from '../src/core/geo.js';
 import { easings, progressAt } from '../src/core/timeline.js';
@@ -368,6 +369,14 @@ bind('resolution', () => {
 });
 
 // --- 書き出し ---
+// サーバを使わずブラウザ内で完結させる。静的ホスティング(GitHub Pages)でも
+// そのまま動き、ローカルでもNodeやffmpegを必要としない。
+if (!canExportInBrowser()) {
+  el('render').disabled = true;
+  el('render-status').textContent =
+    'このブラウザは書き出しに未対応です(Chrome / Edge / Safari 16.4以降で利用できます)';
+}
+
 el('render').addEventListener('click', async () => {
   if (project.points.length < 2) {
     el('render-status').textContent = '地点を2つ以上置いてください';
@@ -375,17 +384,21 @@ el('render').addEventListener('click', async () => {
   }
   const button = el('render');
   const status = el('render-status');
+  stop();
   button.disabled = true;
-  status.textContent = '書き出し中...';
 
+  const started = performance.now();
   try {
-    const res = await fetch('/api/render', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(project),
+    const blob = await exportMp4(project, world, (done, total) => {
+      status.textContent = `書き出し中 ${Math.round((done / total) * 100)}%`;
     });
-    const data = await res.json();
-    status.textContent = data.ok ? `完了: ${data.path}` : `失敗: ${data.log ?? ''}`;
+    const name = project.points
+      .map((p) => (p.name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-'))
+      .filter(Boolean)
+      .join('-') || 'route';
+    downloadBlob(blob, `${name}.mp4`);
+    const secs = ((performance.now() - started) / 1000).toFixed(1);
+    status.textContent = `完了(${secs}秒 / ${(blob.size / 1e6).toFixed(1)}MB)`;
   } catch (err) {
     status.textContent = `失敗: ${err.message}`;
   } finally {
