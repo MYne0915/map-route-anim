@@ -48,3 +48,8 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # このリポジトリではPages側のステータス反映が遅く、
+          # 既定の10分では配信が完了していても待ちきれずに失敗と記録される。
+          # 実際の配信は成功しているので、待ち時間だけ延ばす。
+          timeout: 1800000
