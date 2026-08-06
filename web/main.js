@@ -9,7 +9,6 @@ import {
 } from '../src/core/draw.js';
 import { createProject, sampleProject } from '../src/core/project.js';
 import { exportMp4, downloadBlob, canExportInBrowser } from './export.js';
-import { labelStyles } from '../src/core/style.js';
 import { projections } from '../src/core/geo.js';
 import { easings, progressAt } from '../src/core/timeline.js';
 
@@ -41,18 +40,9 @@ let playStart = 0;
 let progress = 0;
 let drag = null;
 
-// --- 書体をブラウザ側でも同じ family 名で解決させる ---
-await Promise.all(
-  Object.values(labelStyles).map(async (s) => {
-    try {
-      const face = new FontFace(s.family, `local("${s.localName}")`);
-      await face.load();
-      document.fonts.add(face);
-    } catch {
-      console.warn(`書体を読み込めませんでした: ${s.localName}`);
-    }
-  })
-);
+// 書体はブラウザが実行環境から family 名で直接解決する(FontFace の登録は不要)。
+// 以前は local() で読み込もうとしていたが、Chromeの local() は
+// フルネーム/PostScript名でしか解決せず、family名では失敗していた。
 
 // --- 選択肢の生成 ---
 // 配色・書体・地点アイコンはGUIから外して固定にしている(project.js の既定値)。

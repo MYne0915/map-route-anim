@@ -32,7 +32,9 @@ function avcCodecString(width, height, fps) {
   else if (mbs > 5120 || mbsPerSec > 216000) level = 0x32; // 5.0
   else if (mbs > 3600 || mbsPerSec > 61440) level = 0x29; // 4.1
   else if (mbs > 1620 || mbsPerSec > 40500) level = 0x28; // 4.0
-  return `avc1.64${level.toString(16).padStart(2, '0')}`;
+  // 形式は avc1.PPCCLL の6桁(プロファイル / 制約フラグ / レベル)。
+  // 制約フラグの1バイトを省くと VideoEncoder に拒否される。
+  return `avc1.6400${level.toString(16).padStart(2, '0')}`;
 }
 
 /** 解像度とfpsからおおよそのビットレートを決める。 */
@@ -64,7 +66,8 @@ export async function exportMp4(rawProject, world, onProgress) {
 
   const muxer = new Muxer({
     target: new ArrayBufferTarget(),
-    video: { codec: 'avc', width, height },
+    // frameRate を渡すとタイムスタンプがフレーム間隔に丸められ、累積誤差を防げる
+    video: { codec: 'avc', width, height, frameRate: fps },
     // 再生開始を速くする。DaVinci等に渡す前提でも扱いやすい
     fastStart: 'in-memory',
   });

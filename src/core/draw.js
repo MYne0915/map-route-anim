@@ -363,7 +363,11 @@ export function drawOverlay(ctx, scene, p) {
     const ls = scene.labelStyle;
     const size = ls.size * k;
     const pinStyle = project.pinStyle ?? 'pin';
-    ctx.font = `${ls.weight} ${size.toFixed(1)}px "${ls.family}"`;
+    // ブラウザは実行環境の書体を family 名で直接解決し、Nodeは
+    // 同じ名前で登録したものを引く。両者で同じ文字列を使うことで
+    // プレビューと書き出しの文字が一致する。
+    // 該当書体が無い環境では後ろの汎用サンセリフに落ちる。
+    ctx.font = `${ls.weight} ${size.toFixed(1)}px "${ls.family}", system-ui, sans-serif`;
     ctx.textBaseline = 'middle';
     project.points.forEach((pt, i) => {
       if (!pt.name) return;

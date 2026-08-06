@@ -107,10 +107,8 @@ export const defaultPalette = palettes.paleSoft;
 export const labelStyles = {
   futura: {
     label: 'Futura(幾何学サンセリフ・大文字)',
-    family: 'LabelFutura',
+    family: 'Futura',
     file: '/System/Library/Fonts/Supplemental/Futura.ttc',
-    /** ブラウザ側で local() 解決に使う実際の書体名 */
-    localName: 'Futura',
     uppercase: true,
     tracking: 0.18,
     size: 15,
@@ -118,10 +116,8 @@ export const labelStyles = {
   },
   avenir: {
     label: 'Avenir Next(モダンな幾何学サンセリフ・大文字)',
-    family: 'LabelAvenir',
+    family: 'Avenir Next',
     file: '/System/Library/Fonts/Avenir Next.ttc',
-    /** ブラウザ側で local() 解決に使う実際の書体名 */
-    localName: 'Avenir Next',
     uppercase: true,
     tracking: 0.16,
     size: 14.5,
@@ -129,10 +125,8 @@ export const labelStyles = {
   },
   didot: {
     label: 'Didot(高コントラストのセリフ・雑誌的)',
-    family: 'LabelDidot',
+    family: 'Didot',
     file: '/System/Library/Fonts/Supplemental/Didot.ttc',
-    /** ブラウザ側で local() 解決に使う実際の書体名 */
-    localName: 'Didot',
     uppercase: true,
     tracking: 0.2,
     size: 16,
@@ -140,10 +134,8 @@ export const labelStyles = {
   },
   optima: {
     label: 'Optima(ヒューマニストサンセリフ・上品)',
-    family: 'LabelOptima',
+    family: 'Optima',
     file: '/System/Library/Fonts/Optima.ttc',
-    /** ブラウザ側で local() 解決に使う実際の書体名 */
-    localName: 'Optima',
     uppercase: true,
     tracking: 0.18,
     size: 15.5,
@@ -151,10 +143,8 @@ export const labelStyles = {
   },
   copperplate: {
     label: 'Copperplate(彫刻風・スタンプ的)',
-    family: 'LabelCopperplate',
+    family: 'Copperplate',
     file: '/System/Library/Fonts/Supplemental/Copperplate.ttc',
-    /** ブラウザ側で local() 解決に使う実際の書体名 */
-    localName: 'Copperplate',
     uppercase: true,
     tracking: 0.22,
     size: 13.5,
