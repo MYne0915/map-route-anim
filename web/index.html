@@ -20,7 +20,8 @@
         </div>
 
         <p class="hint">
-          地図をクリックで地点を追加 / ピンをドラッグで移動 / ピンを右クリックで削除
+          地図をクリックで地点を追加 / ピンをドラッグで移動 / ピンを右クリックで削除<br />
+          何もない所をドラッグで画面移動 / ホイールで拡大縮小
         </p>
       </main>
 
@@ -29,6 +30,18 @@
           <h2>地点</h2>
           <ol id="points" class="points"></ol>
           <p id="points-empty" class="empty">地図をクリックして地点を追加してください</p>
+        </section>
+
+        <section>
+          <h2>画面</h2>
+          <div class="row">
+            <button id="fit">経路に合わせる</button>
+            <button id="zoomOut" title="縮小">−</button>
+            <button id="zoomIn" title="拡大">＋</button>
+          </div>
+          <label>合わせるときの余白 <output id="paddingOut"></output>
+            <input id="padding" type="range" min="0" max="30" step="1" />
+          </label>
         </section>
 
         <section>
@@ -43,9 +56,6 @@
           <label class="check"><input id="showLabels" type="checkbox" />地名を表示</label>
           <label class="check"><input id="showGraticule" type="checkbox" />経緯線を表示</label>
           <label class="check"><input id="showFutureRoute" type="checkbox" />これから通る経路を破線で表示</label>
-          <label>余白 <output id="paddingOut"></output>
-            <input id="padding" type="range" min="0" max="30" step="1" />
-          </label>
         </section>
 
         <section>
@@ -61,6 +71,7 @@
           <label>解像度<select id="resolution"></select></label>
           <label>fps<select id="fps"><option>24</option><option>30</option><option>60</option></select></label>
           <button id="render" class="primary">MP4を書き出す</button>
+          <button id="png">この位置をPNGで保存</button>
           <p id="render-status" class="status"></p>
         </section>
 

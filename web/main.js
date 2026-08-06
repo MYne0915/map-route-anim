@@ -8,8 +8,10 @@ import {
   pointScreenPos,
 } from '../src/core/draw.js';
 import { createProject, sampleProject } from '../src/core/project.js';
-import { exportMp4, downloadBlob, canExportInBrowser } from './export.js';
+import { exportMp4, exportPng, downloadBlob, canExportInBrowser } from './export.js';
 import { projections } from '../src/core/geo.js';
+import { defaultView } from '../src/core/draw.js';
+import { buildLegs, routeGeoJSON } from '../src/core/arc.js';
 import { easings, progressAt } from '../src/core/timeline.js';
 
 const world = buildWorld(topo);
@@ -69,7 +71,7 @@ ACCENTS.forEach((color) => {
   b.addEventListener('click', () => {
     project.accentColor = color;
     syncControls();
-    rebuild({ keepView: true });
+    rebuild();
   });
   swatches.append(b);
 });
@@ -117,7 +119,7 @@ function renderPoints() {
     name.value = pt.name ?? '';
     name.addEventListener('input', () => {
       pt.name = name.value;
-      rebuild({ keepView: true });
+      rebuild();
     });
 
     const up = iconButton('↑', () => movePoint(i, -1), i === 0);
@@ -153,22 +155,23 @@ function removePoint(i) {
 }
 
 // --- 再構築と描画 ---
-function rebuild({ keepView = false } = {}) {
+function previewSize() {
   const { width, height } = project.output;
   const k = Math.min(1, PREVIEW_MAX / Math.max(width, height));
-  const pw = Math.round(width * k);
-  const ph = Math.round(height * k);
+  return { width: Math.round(width * k), height: Math.round(height * k) };
+}
 
-  const sizeChanged = canvas.width !== pw || canvas.height !== ph;
-  if (sizeChanged) {
+function rebuild() {
+  const { width: pw, height: ph } = previewSize();
+  if (canvas.width !== pw || canvas.height !== ph) {
     canvas.width = pw;
     canvas.height = ph;
   }
 
-  const reuse = keepView && !sizeChanged && scene ? scene : null;
-  scene = prepareScene(project, world, { width: pw, height: ph, reuse });
+  // 前回のsceneを渡すと、地図の見え方が変わっていないかぎり
+  // 焼いた地図をそのまま引き継げる(basemapKeyで判定)
+  scene = prepareScene(project, world, { width: pw, height: ph, reuse: scene });
 
-  // 地図は再生中もドラッグ中も変わらないので、一度だけ焼いて貼り回す
   if (!scene.basemap) {
     cacheBasemap(scene, (w, h) => {
       const c = document.createElement('canvas');
@@ -177,7 +180,71 @@ function rebuild({ keepView = false } = {}) {
       return c;
     });
   }
+  // 自動算出だった視点を確定させ、以降は勝手に動かないようにする
+  if (!project.view) project.view = scene.view;
   draw();
+}
+
+/** 経路に合わせて視点を計算し直す。「経路に合わせる」ボタンの中身。 */
+function fitToRoute() {
+  const { width, height } = previewSize();
+  const kind = project.projection ?? 'naturalEarth';
+  const legs = buildLegs(project.points);
+  project.view = defaultView(project, routeGeoJSON(legs), legs, {
+    width,
+    height,
+    kind,
+    clipped: kind === 'orthographic',
+  });
+  rebuild();
+}
+
+/** 視点を倍率kで拡大縮小する。中心を指定すればその点を固定したままにできる。 */
+function zoomView(k, center) {
+  const v = project.view;
+  if (!v) return;
+  const { width, height } = previewSize();
+  const cx = center ? center.x : width / 2;
+  const cy = center ? center.y : height / 2;
+
+  // 現在の画面上の位置
+  const tx = width / 2 + v.offset[0] * width;
+  const ty = height / 2 + v.offset[1] * height;
+  // 指定点を固定したまま拡大するので、平行移動も同じ倍率で引き伸ばす
+  const nx = cx + (tx - cx) * k;
+  const ny = cy + (ty - cy) * k;
+
+  project.view = {
+    rotate: v.rotate,
+    zoom: v.zoom * k,
+    offset: [(nx - width / 2) / width, (ny - height / 2) / height],
+  };
+  rebuild();
+}
+
+/** 視点を画面上のピクセル量だけ動かす。 */
+function panView(dx, dy) {
+  const v = project.view;
+  if (!v) return;
+  const { width, height } = previewSize();
+
+  if (project.projection === 'orthographic') {
+    // 地球儀は平行移動ではなく回転させる。そうしないと裏側の地点に手が届かない
+    const degPerPx = 90 / (v.zoom * Math.min(width, height));
+    const [lon, lat, roll = 0] = v.rotate;
+    project.view = {
+      rotate: [lon + dx * degPerPx, Math.max(-90, Math.min(90, lat - dy * degPerPx)), roll],
+      zoom: v.zoom,
+      offset: v.offset,
+    };
+  } else {
+    project.view = {
+      rotate: v.rotate,
+      zoom: v.zoom,
+      offset: [v.offset[0] + dx / width, v.offset[1] + dy / height],
+    };
+  }
+  rebuild();
 }
 
 function draw() {
@@ -281,33 +348,38 @@ canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || !scene) return;
   const pos = toCanvas(e);
   const hit = hitPoint(pos);
-  if (hit >= 0) {
-    drag = { index: hit, moved: false };
-    canvas.setPointerCapture(e.pointerId);
-  } else {
-    drag = { index: -1, moved: false, start: pos };
-  }
+  // ピンを掴んでいなければ画面移動。動かさずに離したら地点の追加とみなす
+  drag = { index: hit, moved: false, start: pos, last: pos };
+  canvas.setPointerCapture(e.pointerId);
 });
 
 canvas.addEventListener('pointermove', (e) => {
-  if (!drag || drag.index < 0) return;
-  const coord = toCoord(toCanvas(e));
-  if (!coord) return;
-  drag.moved = true;
-  project.points[drag.index].coord = coord;
-  // ドラッグ中は投影を固定する。動かすたびに再フィットすると地図が揺れて狙えない
-  rebuild({ keepView: true });
-});
-
-canvas.addEventListener('pointerup', (e) => {
   if (!drag) return;
   const pos = toCanvas(e);
 
   if (drag.index >= 0) {
-    // 離したところで初めて全体に合わせ直す
-    if (drag.moved) rebuild();
-  } else if (Math.hypot(pos.x - drag.start.x, pos.y - drag.start.y) < 4) {
     const coord = toCoord(pos);
+    if (!coord) return;
+    drag.moved = true;
+    project.points[drag.index].coord = coord;
+    rebuild();
+    return;
+  }
+
+  // しきい値を超えてから画面移動を始める(クリックでの地点追加と区別するため)
+  if (!drag.moved && Math.hypot(pos.x - drag.start.x, pos.y - drag.start.y) < 4) return;
+  drag.moved = true;
+  canvas.style.cursor = 'grabbing';
+  panView(pos.x - drag.last.x, pos.y - drag.last.y);
+  drag.last = pos;
+});
+
+canvas.addEventListener('pointerup', (e) => {
+  if (!drag) return;
+  canvas.style.cursor = '';
+
+  if (drag.index < 0 && !drag.moved) {
+    const coord = toCoord(toCanvas(e));
     if (coord) {
       project.points.push({
         id: Math.random().toString(36).slice(2, 10),
@@ -321,6 +393,14 @@ canvas.addEventListener('pointerup', (e) => {
   drag = null;
 });
 
+canvas.addEventListener('wheel', (e) => {
+  if (!scene) return;
+  e.preventDefault();
+  // トラックパッドのピンチも wheel + ctrlKey で来る
+  const k = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002));
+  zoomView(Math.max(0.5, Math.min(2, k)), toCanvas(e));
+}, { passive: false });
+
 canvas.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   if (!scene) return;
@@ -329,29 +409,41 @@ canvas.addEventListener('contextmenu', (e) => {
 });
 
 // --- コントロール ---
-function bind(id, apply, { rebuildView = true } = {}) {
+function bind(id, apply) {
   el(id).addEventListener('input', () => {
     apply();
     syncControls();
-    rebuild({ keepView: !rebuildView });
+    rebuild();
   });
 }
 
-bind('projection', () => {
+el('fit').addEventListener('click', fitToRoute);
+el('zoomIn').addEventListener('click', () => zoomView(1.25));
+el('zoomOut').addEventListener('click', () => zoomView(0.8));
+
+el('projection').addEventListener('input', () => {
   project.projection = el('projection').value;
-  // 投影を変えたら余白の既定値も変わるので、明示指定を捨てる
+  // 投影を変えると視点の意味が変わるので、余白の明示指定ごと捨てて合わせ直す
   project.paddingPct = null;
+  project.view = null;
+  syncControls();
+  fitToRoute();
 });
-bind('accent', () => (project.accentColor = el('accent').value), { rebuildView: false });
-bind('showLabels', () => (project.showLabels = el('showLabels').checked), { rebuildView: false });
+
+el('padding').addEventListener('input', () => {
+  project.paddingPct = Number(el('padding').value);
+  syncControls();
+  fitToRoute();
+});
+bind('accent', () => (project.accentColor = el('accent').value));
+bind('showLabels', () => (project.showLabels = el('showLabels').checked));
 bind('showGraticule', () => (project.showGraticule = el('showGraticule').checked));
-bind('showFutureRoute', () => (project.showFutureRoute = el('showFutureRoute').checked), { rebuildView: false });
-bind('padding', () => (project.paddingPct = Number(el('padding').value)));
-bind('duration', () => (project.duration = Number(el('duration').value)), { rebuildView: false });
-bind('holdStart', () => (project.holdStart = Number(el('holdStart').value)), { rebuildView: false });
-bind('holdEnd', () => (project.holdEnd = Number(el('holdEnd').value)), { rebuildView: false });
-bind('easing', () => (project.easing = el('easing').value), { rebuildView: false });
-bind('fps', () => (project.output.fps = Number(el('fps').value)), { rebuildView: false });
+bind('showFutureRoute', () => (project.showFutureRoute = el('showFutureRoute').checked));
+bind('duration', () => (project.duration = Number(el('duration').value)));
+bind('holdStart', () => (project.holdStart = Number(el('holdStart').value)));
+bind('holdEnd', () => (project.holdEnd = Number(el('holdEnd').value)));
+bind('easing', () => (project.easing = el('easing').value));
+bind('fps', () => (project.output.fps = Number(el('fps').value)));
 bind('resolution', () => {
   const r = RESOLUTIONS[el('resolution').value];
   project.output.width = r.width;
@@ -389,6 +481,24 @@ el('render').addEventListener('click', async () => {
     downloadBlob(blob, `${name}.mp4`);
     const secs = ((performance.now() - started) / 1000).toFixed(1);
     status.textContent = `完了(${secs}秒 / ${(blob.size / 1e6).toFixed(1)}MB)`;
+  } catch (err) {
+    status.textContent = `失敗: ${err.message}`;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+el('png').addEventListener('click', async () => {
+  const status = el('render-status');
+  const button = el('png');
+  stop();
+  button.disabled = true;
+  try {
+    // プレビューで見えているコマを、そのまま出力解像度で書き出す
+    const blob = await exportPng(project, world, progress);
+    const stamp = Math.round(progress * project.duration * 10) / 10;
+    downloadBlob(blob, `frame-${stamp}s.png`);
+    status.textContent = `PNGを保存しました(${(blob.size / 1e6).toFixed(1)}MB)`;
   } catch (err) {
     status.textContent = `失敗: ${err.message}`;
   } finally {

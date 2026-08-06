@@ -1,6 +1,6 @@
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 
-import { prepareScene, cacheBasemap, drawFrame } from '../src/core/draw.js';
+import { prepareScene, cacheBasemap, drawFrame, drawFrameAtProgress } from '../src/core/draw.js';
 import { frameCount } from '../src/core/timeline.js';
 import { sanitizeProject } from '../src/core/project.js';
 
@@ -141,6 +141,36 @@ export async function exportMp4(rawProject, world, onProgress) {
 
   if (onProgress) onProgress(total, total);
   return new Blob([muxer.target.buffer], { type: 'video/mp4' });
+}
+
+/**
+ * 現在の再生位置のフレームを、出力解像度のPNGとして書き出す。
+ * プレビューと同じ drawFrameAtProgress を出力解像度で呼ぶだけなので、
+ * 画面で見えているコマがそのまま出る。
+ *
+ * @param {object} rawProject
+ * @param {object} world
+ * @param {number} progress 0..1
+ * @returns {Promise<Blob>}
+ */
+export async function exportPng(rawProject, world, progress) {
+  const project = sanitizeProject(rawProject);
+  const { width, height } = project.output;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { alpha: false });
+
+  const scene = prepareScene(project, world, { width, height });
+  drawFrameAtProgress(ctx, scene, progress);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('PNGを生成できませんでした'))),
+      'image/png'
+    );
+  });
 }
 
 /** Blobをダウンロードさせる。 */

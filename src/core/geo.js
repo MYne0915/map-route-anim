@@ -89,6 +89,45 @@ export function buildProjection({
   return proj;
 }
 
+/**
+ * 視点(view)は解像度に依存しない形で保持する。
+ *
+ *   rotate … 投影の回転(地図の向き)
+ *   zoom   … 短辺に対する倍率。scale = zoom * min(width, height)
+ *   offset … 画面中心からのずれ。キャンバスサイズに対する比率
+ *
+ * こうしておくと、プレビュー(960px)で調整した見え方が
+ * 書き出し(1920px以上)でもそのまま再現される。
+ */
+export function viewFromProjection(proj, width, height) {
+  const t = proj.translate();
+  return {
+    rotate: proj.rotate(),
+    zoom: proj.scale() / Math.min(width, height),
+    offset: [(t[0] - width / 2) / width, (t[1] - height / 2) / height],
+  };
+}
+
+/** 経路に合わせた視点を計算する。「画面に合わせる」操作の中身。 */
+export function fitView({ kind, width, height, paddingPct, route, fitMode }) {
+  const proj = buildProjection({ kind, width, height, paddingPct, route, fitMode });
+  return viewFromProjection(proj, width, height);
+}
+
+/** 保持している視点から投影を組み立てる。 */
+export function projectionFromView(kind, view, width, height) {
+  const spec = projections[kind] ?? projections.naturalEarth;
+  const proj = spec.factory();
+  if (spec.clipped) proj.clipAngle(90);
+  proj.rotate(view.rotate);
+  proj.scale(view.zoom * Math.min(width, height));
+  proj.translate([
+    width / 2 + view.offset[0] * width,
+    height / 2 + view.offset[1] * height,
+  ]);
+  return proj;
+}
+
 /** 経路の重心。地球儀の回転先や初期向きの基準に使う。 */
 export function routeCenter(route) {
   return geoCentroid(route);

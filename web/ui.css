@@ -186,6 +186,8 @@ button.primary {
 button.primary:hover { background: #cb4a35; }
 button.primary:disabled { opacity: 0.5; cursor: default; }
 
+#png { width: 100%; margin-top: 6px; }
+
 .row { display: flex; gap: 8px; }
 .row button { flex: 1; }
 

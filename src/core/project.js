@@ -11,6 +11,11 @@ export function createProject(overrides = {}) {
     /** route: 経路にフィット / globe: 球全体を見せる(地球儀向け) */
     fitMode: null,
     paddingPct: null,
+    /**
+     * 視点(向き・倍率・位置)。解像度に依存しない形で保持する。
+     * null なら経路に合わせて自動算出。GUIで動かすとここに固定される。
+     */
+    view: null,
     /** 画面空間での弧の持ち上げ量。null なら投影法ごとの既定値 */
     arcLift: null,
     palette: 'paleSoft',
@@ -62,6 +67,10 @@ export function sanitizeProject(input) {
 
   if (!DETAIL_LEVELS.includes(p.detail)) p.detail = base.detail;
 
+  // 視点は拡大率と位置を直接決めるので、壊れた値が入ると描画が破綻する。
+  // 一つでも不正なら丸ごと捨てて、経路からの自動算出に戻す。
+  p.view = validView(p.view) ? p.view : null;
+
   p.points = Array.isArray(p.points)
     ? p.points
         .filter(
@@ -92,6 +101,21 @@ export function sanitizeProject(input) {
   p.holdEnd = clampNum(p.holdEnd, 0, p.duration, base.holdEnd);
 
   return p;
+}
+
+function validView(v) {
+  return (
+    v != null &&
+    typeof v === 'object' &&
+    Array.isArray(v.rotate) &&
+    v.rotate.length >= 2 &&
+    v.rotate.every(Number.isFinite) &&
+    Number.isFinite(v.zoom) &&
+    v.zoom > 0 &&
+    Array.isArray(v.offset) &&
+    v.offset.length === 2 &&
+    v.offset.every(Number.isFinite)
+  );
 }
 
 function clampNum(value, min, max, fallback = min) {

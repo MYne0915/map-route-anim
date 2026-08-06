@@ -1,4 +1,4 @@
-import { buildProjection, makePath, graticule, SPHERE } from './geo.js';
+import { makePath, graticule, SPHERE, fitView, projectionFromView } from './geo.js';
 import { buildLegs, routeGeoJSON, totalDistance, clamp01 } from './arc.js';
 import { progressAt, pointReveal } from './timeline.js';
 import { palettes, defaultPalette, labelStyles, defaultLabelStyle } from './style.js';
@@ -32,33 +32,20 @@ export function prepareScene(project, world, { width, height, reuse = null }) {
   const kind = project.projection ?? 'naturalEarth';
   const clipped = kind === 'orthographic';
 
-  // 地点が2つ未満だと経路が空になる。空のGeoJSONにフィットさせると
-  // 境界が無限大になり、拡大率がNaNになって画面が真っ白になるため、
-  // 経路が引けないうちは球(=世界全体)にフィットさせる。
-  const hasRoute = legs.length > 0;
-
-  // 地球儀は球全体が見えないと地球儀に見えないため、既定で球にフィットさせる。
-  // 球は丸いので短辺で決まり、余白を大きく取ると画面が余りすぎる。
-  const fitMode = !hasRoute ? 'globe' : project.fitMode ?? (clipped ? 'globe' : 'route');
-
-  // reuse が渡されたら投影を作り直さない。
-  // ピンをドラッグしている最中に毎フレーム再フィットすると画面が揺れるうえ、
-  // 投影が変わると地図のキャッシュも捨てることになり重い。
-  const projection =
-    reuse?.projection ??
-    buildProjection({
-      kind,
-      width,
-      height,
-      paddingPct: project.paddingPct ?? (fitMode === 'globe' ? 4 : 12),
-      fitMode,
-      route,
-      // 経路が無いと重心も出せないので、置かれている地点があればそこを向く
-      rotate: hasRoute ? null : project.points[0]?.coord ?? [0, 0],
-    });
+  // 視点はプロジェクトに保持する。地点を足すたびに勝手にフィットし直すと、
+  // 今見えている範囲の外にピンを打てなくなるため、フィットは明示操作にしている。
+  // view が無い場合(新規・GUIを通していない保存データ)だけ経路から算出する。
+  const view = project.view ?? defaultView(project, route, legs, { width, height, kind, clipped });
+  const projection = projectionFromView(kind, view, width, height);
 
   const lift = project.arcLift ?? DEFAULT_LIFT[kind] ?? 0;
   const geometry = buildScreenGeometry(projection, legs, lift, clipped);
+
+  // 地図の見え方を決める要素をまとめた鍵。これが同じならキャッシュを使い回せる。
+  // 地点の追加やラベル編集では地図は変わらないので、焼き直しを避けられる。
+  const basemapKey = JSON.stringify([
+    kind, view, width, height, project.palette, project.showGraticule, project.detail,
+  ]);
 
   return {
     width,
@@ -67,17 +54,40 @@ export function prepareScene(project, world, { width, height, reuse = null }) {
     world,
     legs,
     route,
+    view,
     projection,
     clipped,
     geometry,
-    // 投影を使い回した場合だけ地図のキャッシュも引き継げる
-    basemap: reuse?.projection ? reuse.basemap : null,
+    basemapKey,
+    basemap: reuse?.basemapKey === basemapKey ? reuse.basemap : null,
     palette: withAccent(palettes[project.palette] ?? defaultPalette, project.accentColor),
     labelStyle: labelStyles[project.labelStyle] ?? labelStyles[defaultLabelStyle],
     // 解像度に応じて線の太さや文字を拡大する。プレビュー(低解像度)と
     // 書き出し(高解像度)で見た目の比率を揃えるための係数。
     scale: Math.min(width, height) / 720,
   };
+}
+
+/**
+ * 経路に合わせた既定の視点。
+ *
+ * 地点が2つ未満だと経路が空になる。空のGeoJSONにフィットさせると
+ * 境界が無限大になり拡大率がNaNになって画面が真っ白になるため、
+ * 経路が引けないうちは球(=世界全体)にフィットさせる。
+ */
+export function defaultView(project, route, legs, { width, height, kind, clipped }) {
+  const hasRoute = legs.length > 0;
+  // 地球儀は球全体が見えないと地球儀に見えないため、既定で球にフィットさせる
+  const fitMode = !hasRoute ? 'globe' : project.fitMode ?? (clipped ? 'globe' : 'route');
+  return fitView({
+    kind,
+    width,
+    height,
+    // 球は丸いので短辺で決まり、余白を大きく取ると画面が余りすぎる
+    paddingPct: project.paddingPct ?? (fitMode === 'globe' ? 4 : 12),
+    fitMode,
+    route: hasRoute ? route : { type: 'Point', coordinates: project.points[0]?.coord ?? [0, 0] },
+  });
 }
 
 /**
