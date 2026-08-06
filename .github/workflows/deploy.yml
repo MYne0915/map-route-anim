@@ -10,10 +10,13 @@ permissions:
   pages: write
   id-token: write
 
-# 同時に複数のデプロイが走らないようにする。進行中のものは打ち切ってよい
+# 同時に複数のデプロイが走らないようにする。
+# 進行中のデプロイは打ち切らないこと(cancel-in-progress: false)。
+# 打ち切るとそのコミットのPagesデプロイが中途半端な状態で残り、
+# 以降そのSHAに対するデプロイが「Deployment cancelled」で弾かれ続ける。
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
