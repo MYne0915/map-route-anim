@@ -39,7 +39,9 @@ let project = sampleProject();
 let scene = null;
 let playing = false;
 let playStart = 0;
-let progress = 0;
+// 開いた直後は経路全体が見えている方が、何を作っているのか分かりやすい。
+// 再生すると0秒から始まる。
+let progress = 1;
 let drag = null;
 
 // 書体はブラウザが実行環境から family 名で直接解決する(FontFace の登録は不要)。
@@ -523,7 +525,8 @@ el('file').addEventListener('change', async (e) => {
   if (!file) return;
   try {
     project = { ...createProject(), ...JSON.parse(await file.text()) };
-    progress = 0;
+    // 読み込んだ経路の全体が見える状態にする
+    progress = 1;
     syncControls();
     renderPoints();
     rebuild();
