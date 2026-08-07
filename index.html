@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Map Route Anim</title>
+    <script type="module" crossorigin src="/map-route-anim/assets/index-Del4cGlT.js"></script>
+    <link rel="stylesheet" crossorigin href="/map-route-anim/assets/index-CD7Zb7i1.css">
+  </head>
+  <body>
+    <div class="app">
+      <main class="stage">
+        <div class="canvas-wrap">
+          <canvas id="preview"></canvas>
+        </div>
+
+        <div class="transport">
+          <button id="play" class="play">再生</button>
+          <input id="scrub" class="scrub" type="range" min="0" max="1000" value="0" />
+          <span id="time" class="time">0.0s</span>
+        </div>
+
+        <p class="hint">
+          地図をクリックで地点を追加 / ピンをドラッグで移動 / ピンを右クリックで削除<br />
+          何もない所をドラッグで画面移動 / ホイールで拡大縮小
+        </p>
+      </main>
+
+      <aside class="panel">
+        <section>
+          <h2>地点</h2>
+          <ol id="points" class="points"></ol>
+          <p id="points-empty" class="empty">地図をクリックして地点を追加してください</p>
+        </section>
+
+        <section>
+          <h2>画面</h2>
+          <div class="row">
+            <button id="fit">経路に合わせる</button>
+            <button id="zoomOut" title="縮小">−</button>
+            <button id="zoomIn" title="拡大">＋</button>
+          </div>
+          <label>合わせるときの余白 <output id="paddingOut"></output>
+            <input id="padding" type="range" min="0" max="30" step="1" />
+          </label>
+        </section>
+
+        <section>
+          <h2>見た目</h2>
+          <label>投影法<select id="projection"></select></label>
+          <label>差し色
+            <span class="color-row">
+              <input id="accent" type="color" />
+              <span id="accent-swatches" class="swatches"></span>
+            </span>
+          </label>
+          <label class="check"><input id="showLabels" type="checkbox" />地名を表示</label>
+          <label class="check"><input id="showGraticule" type="checkbox" />経緯線を表示</label>
+          <label class="check"><input id="showFutureRoute" type="checkbox" />これから通る経路を破線で表示</label>
+        </section>
+
+        <section>
+          <h2>動き</h2>
+          <label>長さ(秒)<input id="duration" type="number" min="2" max="120" step="0.5" /></label>
+          <label>出発の溜め(秒)<input id="holdStart" type="number" min="0" max="10" step="0.1" /></label>
+          <label>到着の溜め(秒)<input id="holdEnd" type="number" min="0" max="10" step="0.1" /></label>
+          <label>イージング<select id="easing"></select></label>
+        </section>
+
+        <section>
+          <h2>出力</h2>
+          <label>解像度<select id="resolution"></select></label>
+          <label>fps<select id="fps"><option>24</option><option>30</option><option>60</option></select></label>
+          <button id="render" class="primary">MP4を書き出す</button>
+          <button id="png">この位置をPNGで保存</button>
+          <p id="render-status" class="status"></p>
+        </section>
+
+        <section>
+          <h2>プロジェクト</h2>
+          <div class="row">
+            <button id="save">保存</button>
+            <button id="load">読込</button>
+          </div>
+          <input id="file" type="file" accept="application/json" hidden />
+        </section>
+      </aside>
+    </div>
+
+  </body>
+</html>
