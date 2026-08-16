@@ -372,29 +372,29 @@ export function drawOverlay(ctx, scene, p) {
   if (project.showLabels) {
     const ls = scene.labelStyle;
     const size = ls.size * k;
-    const pinStyle = project.pinStyle ?? 'pin';
     // ブラウザは実行環境の書体を family 名で直接解決し、Nodeは
     // 同じ名前で登録したものを引く。両者で同じ文字列を使うことで
     // プレビューと書き出しの文字が一致する。
     // 該当書体が無い環境では後ろの汎用サンセリフに落ちる。
     ctx.font = `${ls.weight} ${size.toFixed(1)}px "${ls.family}", system-ui, sans-serif`;
     ctx.textBaseline = 'middle';
+
+    // 配置(上下左右のどちらにずらすか)は経路線と重ならない位置を
+    // 選んで一度だけ決め、sceneに持たせて使い回す(進捗pでは変わらないため)。
+    if (!scene.labelPlacements) {
+      scene.labelPlacements = computeLabelPlacements(ctx, scene);
+    }
+
     project.points.forEach((pt, i) => {
-      if (!pt.name) return;
-      const xy = projection(pt.coord);
-      if (!xy || (clipped && !isFrontSide(projection, pt.coord))) return;
+      const placement = scene.labelPlacements[i];
+      if (!placement) return;
       const reveal = pointReveal(p, fractionOfPoint(scene, i));
       if (reveal <= 0) return;
       const text = ls.uppercase ? pt.name.toUpperCase() : pt.name;
 
-      // ラベルはピンの真上ではなく横に置く。真上だと経路線と、
-      // 経由地を通過中の飛行機マーカーに必ず重なるため。
-      const flip = xy[0] > width * 0.78;
-      const gap = (PIN.radius + 5) * k;
-
       ctx.globalAlpha = reveal;
-      drawTrackedText(ctx, text, flip ? xy[0] - gap : xy[0] + gap, pinHeadY(xy[1], k, pinStyle), {
-        align: flip ? 'right' : 'left',
+      drawTrackedText(ctx, text, placement.x, placement.y, {
+        align: placement.align,
         tracking: ls.tracking * size,
         fill: palette.label,
         halo: palette.labelHalo,
@@ -448,6 +448,100 @@ function drawTrackedText(ctx, text, anchorX, y, { tracking, fill, halo, haloWidt
     ctx.fillText(chars[i], x, y);
     x += widths[i] + tracking;
   }
+}
+
+/**
+ * 各地点のラベル配置(位置・寄せ方向)を決める。
+ *
+ * 文字を斜めにする(経路に沿わせる)のではなく、常に水平のまま
+ * 右→左→上→下の順で候補を試し、経路線(通過済み・未通過を含む全体)の
+ * 矩形と重ならない最初の候補を選ぶ。全滅した場合は右/左の既定にフォールバックする。
+ * 進捗pに応じて変わらないため、scene単位で一度だけ計算して使い回す。
+ */
+function computeLabelPlacements(ctx, scene) {
+  const { project, projection, clipped, width, geometry } = scene;
+  const ls = scene.labelStyle;
+  const k = scene.scale;
+  const size = ls.size * k;
+  const pinStyle = project.pinStyle ?? 'pin';
+  const gap = (PIN.radius + 5) * k;
+  // 縦方向はピンの尻尾(pinスタイルは頭から下に伸びる)を避ける分だけ広く取る
+  const vGap = (pinStyle === 'dot' ? gap : (PIN.offset + 6) * k) + size * 0.5;
+  const pad = 3.5 * k; // ハロー幅ぶんの余白
+
+  return project.points.map((pt, i) => {
+    if (!pt.name) return null;
+    const xy = projection(pt.coord);
+    if (!xy || (clipped && !isFrontSide(projection, pt.coord))) return null;
+
+    const text = ls.uppercase ? pt.name.toUpperCase() : pt.name;
+    const chars = [...text];
+    const widths = chars.map((c) => ctx.measureText(c).width);
+    const total =
+      widths.reduce((a, b) => a + b, 0) + ls.tracking * size * Math.max(0, chars.length - 1);
+
+    const headY = pinHeadY(xy[1], k, pinStyle);
+    const halfH = size * 0.6 + pad;
+    const candidates = [
+      { align: 'left', x: xy[0] + gap, y: headY },
+      { align: 'right', x: xy[0] - gap, y: headY },
+      { align: 'center', x: xy[0], y: headY - vGap },
+      { align: 'center', x: xy[0], y: headY + vGap },
+    ];
+
+    // 画面右端付近では左寄せを先に試す(既定の向き)
+    const flip = xy[0] > width * 0.78;
+    const order = flip ? [1, 0, 2, 3] : [0, 1, 2, 3];
+
+    for (const idx of order) {
+      const c = candidates[idx];
+      const x0 = c.align === 'left' ? c.x : c.align === 'right' ? c.x - total : c.x - total / 2;
+      const rect = { minX: x0 - pad, maxX: x0 + total + pad, minY: c.y - halfH, maxY: c.y + halfH };
+      if (!rectHitsPolyline(rect, geometry.pts)) return c;
+    }
+    return candidates[order[0]];
+  });
+}
+
+/** 矩形が(可視区間の)折れ線のどこかと交差するか。 */
+function rectHitsPolyline(rect, pts) {
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    if (!a.visible || !b.visible) continue;
+    if (segmentIntersectsRect(a.x, a.y, b.x, b.y, rect)) return true;
+  }
+  return false;
+}
+
+/** 線分と矩形の交差判定(Liang-Barsky)。 */
+function segmentIntersectsRect(x1, y1, x2, y2, rect) {
+  const { minX, minY, maxX, maxY } = rect;
+  if ((x1 >= minX && x1 <= maxX && y1 >= minY && y1 <= maxY) ||
+      (x2 >= minX && x2 <= maxX && y2 >= minY && y2 <= maxY)) {
+    return true;
+  }
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  let tMin = 0;
+  let tMax = 1;
+  const p = [-dx, dx, -dy, dy];
+  const q = [x1 - minX, maxX - x1, y1 - minY, maxY - y1];
+  for (let i = 0; i < 4; i++) {
+    if (p[i] === 0) {
+      if (q[i] < 0) return false;
+    } else {
+      const t = q[i] / p[i];
+      if (p[i] < 0) {
+        if (t > tMax) return false;
+        if (t > tMin) tMin = t;
+      } else {
+        if (t < tMin) return false;
+        if (t < tMax) tMax = t;
+      }
+    }
+  }
+  return tMin <= tMax;
 }
 
 /** i番目の地点が経路全体のどこ(0..1)に当たるか。 */
